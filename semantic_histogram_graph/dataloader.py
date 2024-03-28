@@ -40,6 +40,9 @@ class DataLoader:
         
     def _handle_get_frame_pose(self, index): 
 
+        if index > 0:
+            index = index-1
+
         pose = self.df_poses.iloc[index]
         
         rotation = Rotation.from_quat([
@@ -72,7 +75,7 @@ class DataLoader:
     
     def __next__(self): 
         
-        if self.item_count > self.stop_id:
+        if self.item_count >= self.stop_id:
             raise StopIteration 
         
         seg_path = os.path.join(self.dir, f"segmentation/segmentation_{self.item_count}.png")
@@ -81,7 +84,7 @@ class DataLoader:
         if os.path.exists( seg_path ) and os.path.exists( depth_path ): 
 
             seg_img = cv2.imread(seg_path, cv2.IMREAD_UNCHANGED)
-            seg_img = cv2.cvtColor( seg_img, cv2.COLOR_BGR2RGB )
+            # seg_img = cv2.cvtColor( seg_img, cv2.COLOR_BGR2RGB )
             depth_img = cv2.imread(depth_path, cv2.IMREAD_GRAYSCALE) 
 
             frame_pose = self._handle_get_frame_pose(self.item_count)
@@ -89,7 +92,6 @@ class DataLoader:
 
             self.item_count += 1
 
-
             return (seg_img, depth_img, self.label_rgb, frame_pose, camera_pose)
         else: 
-            print (f"[Error] file does not exists: ")
+            raise (f"[Error] file does not exists: ")

@@ -44,7 +44,7 @@ class GraphEdges:
 
     def __init__(self, nodes ) -> None:
         self.nodes = nodes
-        self.max_node_to_node_distance = 2
+        self.max_node_to_node_distance = 20
 
     def get_neighbors(self): 
 
@@ -59,15 +59,19 @@ class GraphEdges:
                     if (distance) < self.max_node_to_node_distance : 
                         edges[i, j] = 1
 
+        print ( edges )
         return edges 
 
 
 class GraphBuilderUnit: 
 
-    def __init__(self, camera_intrinsic = None, node_prefix = "m") -> None:
+    def __init__(self, camera_intrinsic = None, node_prefix = "m", min_node_distance = 5, max_depth_threshold = 50) -> None:
 
         self.camera_intrinsic = camera_intrinsic
-        self.max_points_for_node = 5000
+        self.max_label_pixels_for_node = 5000
+        self.max_depth_threshold = max_depth_threshold
+        self.min_node_to_node_distance = min_node_distance
+
         self._nodes = []
         self._edges = []
 
@@ -102,12 +106,10 @@ class GraphBuilderUnit:
         self._node_name_+= 1
         return self._node_prefix + str(self._node_name_)
     
-    def handle_get_pointcloud(self, image_rgb, image_depth, camera_pose): 
-
-        image_depth = (image_depth.astype(np.float32) * 100 / 255.0 )
+    def handle_get_pointcloud(self, image_bgr, image_depth, camera_pose): 
 
         rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
-            o3d.geometry.Image(image_rgb),
+            o3d.geometry.Image(image_bgr),
             o3d.geometry.Image(image_depth),
             depth_scale=1000.0,   
             depth_trunc=3.0,      
@@ -138,35 +140,64 @@ class GraphBuilderUnit:
         x ,y, z = point_world
         return point_world 
 
+    def handle_fuse_nodes(self, node : GraphNode):
 
-    def handle_label_extraction(self, image_rgb, image_depth, image_labels_rgb , frame_pose): 
+        fuse = False
+        cx, cy, cz = node.XYZ
+        for pre_node in self.nodes:
+            px, py, pz = pre_node.XYZ
+            if node.label == pre_node.label:
+                node_distance = np.sqrt( np.square(cx - px) + np.square(cy - py) + np.square(cz - pz) )
+                # print (node_distance)
+                if node_distance < self.min_node_to_node_distance:
+                    fuse = True
+                    break
+            
+        return fuse
+
+    def handle_label_extraction(self, image_bgr, image_depth, image_labels_rgb , frame_pose): 
 
         image_labels_gray = cv2.cvtColor(image_labels_rgb, cv2.COLOR_RGB2GRAY ).squeeze(0)
-        image_gray = cv2.cvtColor( image_rgb, cv2.COLOR_RGB2GRAY) 
+        image_gray = cv2.cvtColor( image_bgr, cv2.COLOR_BGR2GRAY) 
+        image_rgb = cv2.cvtColor( image_bgr, cv2.COLOR_BGR2RGB ) 
 
         for count, label_color in enumerate(image_labels_gray):
+
             image_mask = np.zeros(image_gray.shape)
-            indices = np.where(image_gray == label_color)
+            # indices = np.where(image_gray == label_color)
+
+            indices = np.where(image_rgb == image_labels_rgb[:, count])
+            indices = [indices[0], indices[1]]
+
             image_mask[ indices ] = 255
+
+            if ( len(indices[0]) == 0 ):
+                # print(f"No label is found" )
+                continue
             
-            depth_points = image_depth[ image_mask == 255 ] * 100 / 255.0
+            depth_points = image_depth[ image_mask == 255 ] 
             y_points = indices[0]
             x_points = indices[1]
+            pixel_mean_point = [np.mean(x) for x in [x_points, y_points, depth_points ]]
 
-            if len(depth_points) >= self.max_points_for_node :
-                pixel_mean_point = [np.mean(x) for x in [x_points, y_points, depth_points ]]
+            if pixel_mean_point[2] > self.max_depth_threshold:
+                # print (f"Ignoring distance: {pixel_mean_point[2]}")
+                continue
+
+            if len(depth_points) >= self.max_label_pixels_for_node :
                 world_mean_point = self.handle_pixel_to_world(pixel_mean_point, frame_pose)
                 label_color_rgb = image_labels_rgb[:, count, :]
-                
                 node_name = self.get_node_name()
-                node = GraphNode( node_name, world_mean_point, pixel_mean_point, count, label_color , label_color_rgb) 
-                self.nodes.append( node )
 
                 circle_centers = (int( pixel_mean_point[0] ), int( pixel_mean_point[1]) )                
-                cv2.circle( image_rgb, circle_centers, 15, (255, 255, 0), 3 )
+                cv2.circle( image_bgr, circle_centers, 15, (255, 255, 0), 3 )
 
+                node = GraphNode( node_name, world_mean_point, pixel_mean_point, count, label_color , label_color_rgb) 
+                if self.handle_fuse_nodes(node):
+                    continue 
 
-    def handle_frame(self, image_rgb, image_depth, labels, frame_pose, camera_pose):
+                self.nodes.append( node )
 
-        pass
-
+            
+            # cv2.imshow('bbb', image_mask)
+            # cv2.waitKey(2000)
