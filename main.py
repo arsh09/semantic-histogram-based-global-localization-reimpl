@@ -29,10 +29,10 @@ def main() :
 
     intrinsic = o3d.camera.PinholeCameraIntrinsic( width, height, fx, fy, cx, cy)
 
-    data_map = DataLoader( dir = "/data/airsim_2/forwardCar/", start_id=1, stop_id=10 )
+    data_map = DataLoader( dir = "/data/airsim_2/forwardCar/", start_id=1, stop_id=100 )
     builder_map = GraphBuilderUnit(intrinsic, node_prefix = "m" )
 
-    data_query = DataLoader( dir = "/data/airsim_2/backwardCar/", start_id=1, stop_id=5)
+    data_query = DataLoader( dir = "/data/airsim_2/backwardCar/", start_id=40, stop_id=65)
     # builder_query = GraphBuilderUnit(intrinsic, node_prefix = "q" , max_depth_threshold = 125)
     builder_query = GraphBuilderUnit(intrinsic, node_prefix = "q" )
 

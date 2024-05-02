@@ -59,7 +59,6 @@ class GraphEdges:
                     if (distance) < self.max_node_to_node_distance : 
                         edges[i, j] = 1
 
-        print ( edges )
         return edges 
 
 
